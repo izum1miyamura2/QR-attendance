@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TREADS'25 QR Attendance Scanner</title>
+    
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 30px;
+        }
+        
+        h1 { color: #333; text-align: center; margin-bottom: 10px; font-size: 28px; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 30px; font-size: 14px; }
+        
+        .venue-selector { margin-bottom: 25px; }
+        
+        label { display: block; margin-bottom: 8px; color: #333; font-weight: 600; font-size: 14px; }
+        
+        select {
+            width: 100%; padding: 12px; border: 2px solid #e0e0e0;
+            border-radius: 8px; font-size: 16px; background: white;
+            cursor: pointer; transition: border-color 0.3s;
+        }
+        select:focus { outline: none; border-color: #667eea; }
+        
+        #reader { width: 100%; margin-bottom: 20px; border-radius: 12px; overflow: hidden; }
+        
+        .button-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        
+        button {
+            flex: 1; padding: 12px 20px; border: none; border-radius: 8px;
+            font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s;
+        }
+        
+        #startBtn { background: #667eea; color: white; }
+        #startBtn:hover:not(:disabled) { background: #5568d3; transform: translateY(-2px); }
+        
+        #stopBtn { background: #e74c3c; color: white; }
+        #stopBtn:hover:not(:disabled) { background: #c0392b; transform: translateY(-2px); }
+        
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .status { padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; display: none; }
+        .status.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; display: block; }
+        .status.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; display: block; }
+        .status.info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; display: block; }
+        
+        .config-section { margin-top: 20px; padding-top: 20px; border-top: 2px solid #e0e0e0; }
+        .config-section h3 { font-size: 16px; margin-bottom: 10px; color: #333; }
+        
+        input[type="text"] {
+            width: 100%; padding: 10px; border: 2px solid #e0e0e0;
+            border-radius: 8px; font-size: 14px;
+        }
+        input[type="text"]:focus { outline: none; border-color: #667eea; }
+        
+        .small-text { font-size: 12px; color: #666; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📱 QR Attendance Scanner</h1>
+        <p class="subtitle">TREADS'25 Hackathon</p>
+        
+        <div class="venue-selector">
+            <label for="venueSelect">Select Venue:</label>
+            <select id="venueSelect">
+                <option value="">-- Select a venue --</option>
+                <option value="Canteen">Canteen</option>
+                <option value="Main Hall">Main Hall</option>
+                <option value="Workshop Room 1">Workshop Room 1</option>
+                <option value="Workshop Room 2">Workshop Room 2</option>
+                <option value="Registration Desk">Registration Desk</option>
+            </select>
+        </div>
+        
+        <div id="status" class="status"></div>
+        
+        <div id="reader"></div>
+        
+        <div class="button-group">
+            <button id="startBtn" onclick="startScanning()">Start Scanner</button>
+            <button id="stopBtn" onclick="stopScanning()" disabled>Stop Scanner</button>
+        </div>
+        
+        <div class="config-section">
+            <h3>⚙️ Configuration</h3>
+            <label for="apiUrl">Google Apps Script Web App URL:</label>
+            <input type="text" id="apiUrl" placeholder="https://script.google.com/macros/s/..." />
+            <p class="small-text">Paste your Google Apps Script deployment URL here</p>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let html5QrcodeScanner = null;
+        let isScanning = false;
+        let isProcessing = false; // Prevents "Machine Gun" scanning
+        
+        /**
+         * Initialize the QR code scanner
+         */
+        function initScanner() {
+            html5QrcodeScanner = new Html5Qrcode("reader");
+        }
+        
+        /**
+         * Start scanning QR codes
+         */
+        async function startScanning() {
+            const venue = document.getElementById('venueSelect').value;
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            
+            // Validate venue selection
+            if (!venue) {
+                showStatus('Please select a venue first!', 'error');
+                return;
+            }
+            
+            // Validate API URL
+            if (!apiUrl) {
+                showStatus('Please enter your Google Apps Script Web App URL!', 'error');
+                return;
+            }
+            
+            try {
+                // Start the camera and scanner
+                await html5QrcodeScanner.start(
+                    { facingMode: "environment" }, // Use back camera
+                    {
+                        fps: 10, // Frames per second
+                        qrbox: { width: 250, height: 250 } // Scanning area
+                    },
+                    onScanSuccess, // Success callback
+                    onScanError    // Error callback
+                );
+                
+                isScanning = true;
+                isProcessing = false;
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+                showStatus('Scanner started! Point camera at QR code...', 'info');
+                
+            } catch (err) {
+                showStatus('Error starting scanner: ' + err.message, 'error');
+                console.error('Scanner error:', err);
+            }
+        }
+        
+        /**
+         * Stop scanning QR codes
+         */
+        async function stopScanning() {
+            if (html5QrcodeScanner && isScanning) {
+                try {
+                    await html5QrcodeScanner.stop();
+                    isScanning = false;
+                    document.getElementById('startBtn').disabled = false;
+                    document.getElementById('stopBtn').disabled = true;
+                    showStatus('Scanner stopped.', 'info');
+                } catch (err) {
+                    showStatus('Error stopping scanner: ' + err.message, 'error');
+                }
+            }
+        }
+        
+        /**
+         * Handle successful QR code scan
+         * @param {string} decodedText - The decoded QR code text (JSON string)
+         */
+        async function onScanSuccess(decodedText) {
+            // Prevent multiple scans while one is processing
+            if (isProcessing) return;
+
+            try {
+                isProcessing = true; // Lock the scanner
+
+                // 1. Parse the JSON data from QR code
+                const qrData = JSON.parse(decodedText);
+                
+                // 2. Validate QR code data structure (Updated for UUID)
+                if (!qrData.uuid || !qrData.name || !qrData.team) {
+                    showStatus('Invalid QR format! Missing UUID/Name/Team.', 'error');
+                    setTimeout(() => { isProcessing = false; }, 2000); // Unlock after 2s
+                    return;
+                }
+                
+                // Get venue and API URL
+                const venue = document.getElementById('venueSelect').value;
+                const apiUrl = document.getElementById('apiUrl').value.trim();
+                
+                // 3. Prepare data to send (Including UUID)
+                const attendanceData = {
+                    uuid: qrData.uuid,
+                    name: qrData.name,
+                    team: qrData.team,
+                    venue: venue
+                };
+                
+                // Show scanning status
+                showStatus(`⚡ Found: ${qrData.name}. Recording...`, 'info');
+                
+                // 4. Send data to Google Apps Script
+                await fetch(apiUrl, {
+                    method: 'POST',
+                    mode: 'no-cors', // Important: Google Apps Script requires no-cors
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(attendanceData)
+                });
+                
+                // 5. Success Feedback
+                showStatus(`✅ Verified: ${qrData.name} (${qrData.team})`, 'success');
+                
+                // 6. Cool-down Timer (3 seconds)
+                // This prevents scanning the same person twice instantly
+                setTimeout(() => {
+                    isProcessing = false;
+                    showStatus('Ready for next scan...', 'info');
+                }, 3000);
+                
+            } catch (err) {
+                if (err instanceof SyntaxError) {
+                    showStatus('❌ Error: Not a TREADS QR Code.', 'error');
+                } else {
+                    showStatus('Error processing scan: ' + err.message, 'error');
+                }
+                // Unlock quickly on error
+                setTimeout(() => { isProcessing = false; }, 2000);
+            }
+        }
+        
+        /**
+         * Handle scanning errors
+         */
+        function onScanError(errorMessage) {
+            // Ignore common scanning errors (they're normal during scanning)
+        }
+        
+        /**
+         * Display status messages
+         */
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = 'status ' + type;
+        }
+        
+        // Initialize scanner when page loads
+        window.addEventListener('DOMContentLoaded', () => {
+            initScanner();
+            
+            // Try to load API URL from localStorage
+            const savedUrl = localStorage.getItem('apiUrl');
+            if (savedUrl) {
+                document.getElementById('apiUrl').value = savedUrl;
+            }
+            
+            // Save API URL to localStorage when changed
+            document.getElementById('apiUrl').addEventListener('change', (e) => {
+                localStorage.setItem('apiUrl', e.target.value);
+            });
+        });
+    </script>
+</body>
+</html>
