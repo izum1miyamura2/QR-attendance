@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 # Configuration
-CSV_FILE = "participants.csv"
+CSV_FILE = "Actual_checkin_participants.csv"  # Source file that has the Unique ID column
 OUTPUT_DIR = "qr_codes"
 QR_SIZE = 10
 QR_BORDER = 4
@@ -39,19 +39,25 @@ def generate_qr_code(data, filename):
 
 def main():
     print("=" * 60)
-    print("TREADS'25 QR Code Generator (UUID Version)")
+    print("TREADS'25 QR Code Generator")
     print("=" * 60)
     print()
     
     if not os.path.exists(CSV_FILE):
         print(f"[ERROR] '{CSV_FILE}' not found!")
-        print(f"   Please create CSV with columns: UUID, Name, Team Name")
+        print(f"   Please create CSV with a 'Unique ID' column (and optional Name/Team columns).")
         return
     
     create_output_directory()
     
     try:
-        df = pd.read_csv(CSV_FILE)
+        # Try reading as CSV first (comma-separated)
+        try:
+            df = pd.read_csv(CSV_FILE)
+        except:
+            # If that fails, try tab-separated
+            df = pd.read_csv(CSV_FILE, sep='\t')
+        
         # Normalize headers to lowercase to avoid case-sensitivity issues
         df.columns = [c.strip().lower() for c in df.columns]
         print(f"[OK] Loaded {len(df)} participants")
@@ -59,14 +65,15 @@ def main():
         print(f"[ERROR] Error reading CSV: {e}")
         return
     
-    # Check for the specific columns you asked for
-    # CSV headers must be: UUID, Name, Team Name (case insensitive)
-    required_columns = ['uuid', 'name', 'team name']
+    # Check for required columns
+    # CSV headers must include: Unique ID (case insensitive)
+    # You can also have Name / Team columns, but they are not required for QR content now.
+    required_columns = ['unique id']
     missing = [col for col in required_columns if col not in df.columns]
     
     if missing:
         print(f"[ERROR] Missing columns: {missing}")
-        print(f"   Your CSV must have: UUID, Name, Team Name")
+        print(f"   Your CSV must have: Name, Team Name")
         return
     
     print()
@@ -78,30 +85,28 @@ def main():
     for index, row in df.iterrows():
         try:
             # 1. Extract Data
-            uuid_val = str(row['uuid']).strip()
-            name_val = str(row['name']).strip()
-            team_val = str(row['team name']).strip()
+            # Columns were normalized to lowercase, so we access 'unique id'
+            unique_id_val = str(row['unique id']).strip()
             
-            if not uuid_val or not name_val:
+            if not unique_id_val:
                 continue
 
             # 2. Build Payload (The data inside the QR)
+            # We keep the JSON payload simple: { "id": "<Unique ID value>" }
             data = {
-                "uuid": uuid_val,
-                "name": name_val,
-                "team": team_val
+                "id": unique_id_val
             }
             
-            # 3. Create Unique Filename (Name + First 4 chars of UUID)
-            # This prevents overwriting if two people have the same name
-            safe_name = "".join(c for c in name_val if c.isalnum() or c in ('_', '-'))
-            filename = f"{safe_name}_{uuid_val[:4]}" 
+            # 3. Create Safe Filename (Name only)
+            # Replace spaces and special chars with underscores
+            safe_name = "".join(c for c in unique_id_val if c.isalnum() or c in ('_', '-'))
+            safe_name = safe_name.replace(' ', '_')
+            filename = safe_name
             
             filepath, _ = generate_qr_code(data, filename)
             generated_count += 1
             
-            print(f"[OK] {name_val} (Team: {team_val})")
-            print(f"    ID: {uuid_val}")
+            print(f"[OK] ID: {unique_id_val}")
             print(f"    File: {filepath}")
             print()
             

@@ -198,9 +198,9 @@
                 // 1. Parse the JSON data from QR code
                 const qrData = JSON.parse(decodedText);
                 
-                // 2. Validate QR code data structure (Updated for UUID)
-                if (!qrData.uuid || !qrData.name || !qrData.team) {
-                    showStatus('Invalid QR format! Missing UUID/Name/Team.', 'error');
+                // 2. Validate QR code data structure (Unique ID only)
+                if (!qrData.id) {
+                    showStatus('Invalid QR format! Missing id.', 'error');
                     setTimeout(() => { isProcessing = false; }, 2000); // Unlock after 2s
                     return;
                 }
@@ -209,16 +209,14 @@
                 const venue = document.getElementById('venueSelect').value;
                 const apiUrl = document.getElementById('apiUrl').value.trim();
                 
-                // 3. Prepare data to send (Including UUID)
+                // 3. Prepare data to send
                 const attendanceData = {
-                    uuid: qrData.uuid,
-                    name: qrData.name,
-                    team: qrData.team,
+                    id: qrData.id,
                     venue: venue
                 };
                 
                 // Show scanning status
-                showStatus(`⚡ Found: ${qrData.name}. Recording...`, 'info');
+                showStatus(`🔍 Checking ID: ${qrData.id}...`, 'info');
                 
                 // 4. Send data to Google Apps Script
                 await fetch(apiUrl, {
@@ -231,7 +229,7 @@
                 });
                 
                 // 5. Success Feedback
-                showStatus(`✅ Verified: ${qrData.name} (${qrData.team})`, 'success');
+                showStatus(`✅ Checked ID: ${qrData.id} at ${venue}`, 'success');
                 
                 // 6. Cool-down Timer (3 seconds)
                 // This prevents scanning the same person twice instantly
